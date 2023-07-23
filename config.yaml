@@ -1,0 +1,64 @@
+trade_symbol: "DOTUSDT"
+time_interval: "5m"
+leverage: 5
+strategy_name: "triplesupertrend"
+
+triplesupertrend:
+  supertrend-1:
+    atr: 7
+    multiplier: 1
+  supertrend-2:
+    atr: 8
+    multiplier: 2
+  supertrend-3:
+    atr: 9
+    multiplier: 3
+  ema: 200
+  bband:
+    period: 20
+    multiplier: 2
+    upper_band: 80
+    lower_band: 20
+  strategy:
+    stop_loss_long: 0.99
+    take_profit_long: 1.015
+    stop_loss_short: 1.01
+    take_profit_short: 0.985
+    rsi_overbought: 70
+    rsi_oversold: 25
+
+tripleema:
+  stoch_rsi: 14
+  ema-1: 7
+  ema-2: 30
+  ema-3: 50
+  strategy:
+    sl_mulitplier: 2
+    tp_mulitplier: 3
+
+stochrsimacd:
+  upper_band: 80
+  lower_band: 20
+  pnl_ratio: 1.5
+
+bbstochrsi:
+  upper_band: 95
+  lower_band: 5
+  atr_tp: 4
+  atr_sl: 4
+  triggerbuffer: 8
+  ema: 100
+
+test:
+  sma-1: 7
+  sma-2: 30
+  stoch_rsi: 14
+  rsi: 21
+  bband:
+    period: 20
+    multiplier: 2
+  atr: 14
+  macd:
+    ema_fast: 12
+    ema_slow: 26
+    signal: 9

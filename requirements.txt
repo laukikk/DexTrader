@@ -1,0 +1,6 @@
+python-binance
+pandas
+websocket_client
+matplotlib
+seaborn
+pyyaml
