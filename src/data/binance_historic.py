@@ -11,9 +11,9 @@ def get_historical_klines(symbol, interval, start_date):
     return [[ctime(candlestick[0]/1000)] + candlestick[1:6] for candlestick in candlesticks]
 
 
-def get_historic_data(symbol, interval):
+def get_historic_data(symbol, interval, days=2):
     end_date = datetime.datetime.now()
-    start_date = end_date - datetime.timedelta(days=2)
+    start_date = end_date - datetime.timedelta(days=days)
     start_date_str = start_date.strftime("%d %b, %Y")
 
     candlesticks = get_historical_klines(

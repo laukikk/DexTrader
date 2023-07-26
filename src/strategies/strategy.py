@@ -65,10 +65,10 @@ class Strategy:
         pass
 
     def run(self):
-        self.df.to_csv('res.csv')
-        # print(self.df)
+        pass
 
-    def _get_available_balance(self, asset: str='USDT'):
+
+    def _get_available_futures_balance(self, asset: str='USDT'):
         ''' Gets available balance from Binance account '''
         try:
             balance = self.client.futures_account_balance()
@@ -78,6 +78,21 @@ class Strategy:
                     availableBalance = float(i['availableBalance'])
                     break
             return availableBalance
+
+        except Exception as e:
+            logging.error(f"Error getting available balance: {e}")
+            print("an exception occured - {}".format(e))
+            return False
+        
+    def _get_available_balance(self, asset: str, type:str='free'):
+        ''' Gets available balance from Binance account
+        
+        Args:
+            asset (str): Asset to get balance from
+            type (str): Type of balance (free or locked)
+        '''
+        try:
+            return self.client.get_asset_balance(asset=asset)[type]
 
         except Exception as e:
             logging.error(f"Error getting available balance: {e}")
