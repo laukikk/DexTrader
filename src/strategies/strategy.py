@@ -1,6 +1,7 @@
 import logging
 from binance.client import Client
 from binance.enums import *
+from tqdm import tqdm
 
 from src.data.calculate_indicators import *
 from ..keys import BINANCE_API_KEY, BINANCE_API_SECRET
@@ -12,15 +13,33 @@ class Strategy:
     Attributes:
         df (pandas.DataFrame): Dataframe with OHLCV data
         config (dict): Config file
-        balance (float): Balance to trade with
     '''
     def __init__(self, df, config):
         self.config = config
         self.parameters = self.config[self.config['strategy_name']]
         self.indicators = Indicators()
         self.df = self.indicators.get_indicators(df, self.parameters)
+        self.trades = pd.DataFrame(columns=['date', 'symbol', 'side', 'quantity', 'entry', 'stop_loss', 'take_profit', 'result', '%pnl', 'pnl', 'balance', 'order_id', 'stop_loss_order_id', 'take_profit_order_id'])
 
         self.client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+
+    def _round_price(self, num: float):
+        ''' Returns a number with 4 significant digits'''
+        sig_req = 4
+        try:
+            l,r = str(num).split('.')
+        except ValueError:
+            return num
+        if l != '0':
+            return round(num, max(sig_req-len(l), 2))
+        else:
+            zero_count = 0
+            for i in r:
+                if i == '0':
+                    zero_count += 1
+                else:
+                    break
+            return round(num, max(4, zero_count+sig_req))
 
     def _execute_trade_binance(self, side, quantity, symbol, positionSide, stopLoss, takeProfit):
         ''' Executes a trade on Binance
@@ -55,17 +74,103 @@ class Strategy:
 
         return order['orderId'], order_stop_loss['orderId'], order_take_profit['orderId']
 
-    def _execute_trade_backtest(self):
+    def make_trade(self):
+        '''updated by the child class'''
         pass
 
-    def make_prediction(self):
-        pass
+    def __execute_trade_backtest(self, date, trade_parameters, close_price, balance, result):
+        if trade_parameters['side'] == "LONG":
+            pnl = (close_price - trade_parameters['entry']) * balance / trade_parameters['entry']
+        else:
+            pnl = (trade_parameters['entry'] - close_price) * balance / trade_parameters['entry']
 
-    def backtest(self):
-        pass
+        pnl_percent = (pnl / balance) * 100
+        balance += pnl
+
+        return {
+            'date': date,
+            'symbol':  self.config['trade_symbol'],
+            'side': trade_parameters['side'],
+            'quantity': trade_parameters['quantity'],
+            'entry': trade_parameters['entry'],
+            'stop_loss': trade_parameters['stop_loss'],
+            'take_profit': trade_parameters['take_profit'],
+            'result': result,
+            '%pnl': pnl_percent,
+            'pnl': pnl,
+            'balance': balance,
+            'order_id': None,
+            'stop_loss_order_id': None,
+            'take_profit_order_id': None
+        }
+
+
+
+    def backtest(self, balance=1000) -> pd.DataFrame:
+        isPositionOpen = False
+        trade_parameters = None
+        self.df.to_csv('indicators.csv')
+
+        print('Backtesting...')
+        for i in tqdm(range(len(self.df))):
+            if not isPositionOpen:
+                if self.df.iloc[i].isnull().sum() != 0:
+                    continue
+
+                trade = self.make_trade(type="backtest", row=self.df.iloc[i])
+
+                if trade:
+                    if self.config['type'] == "spot":
+                        if trade['side'] == "LONG":
+                            isPositionOpen = True
+                            trade_parameters = trade
+
+            elif isPositionOpen:
+                print('-----position------')
+                close_price = self.df.iloc[i].Close
+                if trade_parameters['side'] == "LONG":
+                    if close_price <= trade_parameters['stop_loss']:
+                        print('long stop loss hit')
+                        self.trades = self.trades.append(
+                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'stop_loss'),
+                            ignore_index=True
+                        )
+                        isPositionOpen = False
+                        trade_parameters = {}
+
+                    elif close_price >= trade_parameters['take_profit']:
+                        print('long take profit hit')
+                        self.trades = self.trades.append(
+                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'take_profit'),
+                            ignore_index=True
+                        )
+                        isPositionOpen = False
+                        trade_parameters = {}
+
+                elif trade_parameters['side'] == "SHORT":
+                    if close_price >= trade_parameters['stop_loss']:
+                        print('short stop loss hit')
+                        self.trades = self.trades.append(
+                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'stop_loss'),
+                            ignore_index=True
+                        )
+                        isPositionOpen = False
+                        trade_parameters = {}
+
+                    elif close_price <= trade_parameters['take_profit']:
+                        print('short take profit hit')
+                        self.trades = self.trades.append(
+                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'take_profit'),
+                            ignore_index=True
+                        )
+                        isPositionOpen = False
+                        trade_parameters = {}
+
+        return self.trades
 
     def run(self):
-        pass
+        trades = self.backtest()
+        trades.to_csv(f"backtest.csv", index=False)
 
 
     def _get_available_futures_balance(self, asset: str='USDT'):

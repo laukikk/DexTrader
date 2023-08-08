@@ -1,12 +1,13 @@
 import yaml
 
-
 from src.data import binance_historic as data
 from src.strategies.triple_supertrend import TripleSupertrendStrategy
 
 
 def main(config):
-    df = data.get_historic_data(symbol=config['trade_symbol'], interval=config['time_interval'])
+    df = data.get_historic_data(symbol=config['trade_symbol'], 
+                                interval=config['time_interval'], 
+                                days=config['history_days'])
     strategy = TripleSupertrendStrategy(df, config)
     strategy.run()
 

@@ -146,7 +146,7 @@ def EMA(df, base, target, period, alpha=False):
         # ((current_val - previous_val) * coeff) + previous_val where coeff = 2 / (period + 1)
         df[target] = con.ewm(span=period, adjust=False).mean()
 
-    df[target].fillna(0, inplace=True)
+    # df[target].fillna(0, inplace=True)
     return df
 
 
@@ -251,8 +251,8 @@ def BBand(df, base='Close', period=20, multiplier=2):
     df[upper] = sma + (multiplier * sd)
     df[lower] = sma - (multiplier * sd)
 
-    df[upper].fillna(0, inplace=True)
-    df[lower].fillna(0, inplace=True)
+    # df[upper].fillna(0, inplace=True)
+    # df[lower].fillna(0, inplace=True)
 
     return df
 
@@ -373,7 +373,11 @@ def SuperTrend(df, period, multiplier, ohlc=['Open', 'High', 'Low', 'Close']):
 
     # Mark the trend direction up/down
     df[stx] = np.where((df[st] > 0.00), np.where(
-        (df[ohlc[3]] < df[st]), 'down',  'up'), np.NaN)
+        (df[ohlc[3]] < df[st]), 'down',  'up'), None)
+    
+    # Add nulls to the initial periods
+    for i in range(0, period):
+        df[st].iat[i] = None
 
     return df[st], df[stx]
 

@@ -73,7 +73,7 @@ class Indicators:
     
     def __get_StochasticRSI(self, src: pd.DataFrame, value: dict):
         df = src.copy()
-        stochInd = StochRSIIndicator(df.Close, value['stoch_rsi'])
+        stochInd = StochRSIIndicator(df.Close, window=value)
         df['sRSI_d'] = stochInd.stochrsi_d()*100
         df['sRSI_k'] = stochInd.stochrsi_k()*100
 
