@@ -1,6 +1,6 @@
 trade_symbol: "DOTUSDT"
 time_interval: "5m"
-history_days: 3
+timeframe: 20
 type: "spot"
 leverage: 5
 strategy_name: "triplesupertrend"

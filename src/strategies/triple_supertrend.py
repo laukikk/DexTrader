@@ -13,7 +13,7 @@ class TripleSupertrendStrategy(Strategy):
 
         # LONG
         if min(row.sRSI_d, row.sRSI_k) < self.strategy_parameters['rsi_oversold']:
-            print('long')
+            self.logger.debug('LONG signal')
             super_trend = [row.ST_3, row.ST_2, row.ST_1]
             super_trend_val = []
             for val in super_trend:
@@ -22,6 +22,7 @@ class TripleSupertrendStrategy(Strategy):
             super_trend_val.sort(reverse=True)
 
             if row.Close > row.EMA and (row.sRSI_d < row.sRSI_k and len(super_trend_val) > 1):
+                self.logger.info('LONG entry')
                 stopLoss = max(self.strategy_parameters['stop_loss_long']
                             * row.Close, super_trend_val[1])
                 stopLoss = self._round_price(stopLoss)
@@ -31,9 +32,9 @@ class TripleSupertrendStrategy(Strategy):
                 if type == "trade":
                     availableBalance = self._get_available_balance()
                     quantity = self._calculate_quantity(self.config, row, availableBalance)
-                    print(
+                    self.logger.info(
                         f'Placing order: LONG at price: {row.Close} and quantity: {quantity}')
-                    print(f'Stop Loss: {stopLoss} \nTake Profit: {takeProfit}')
+                    self.logger.info(f'Stop Loss: {stopLoss} \nTake Profit: {takeProfit}')
                     orderIds = self._execute_trade_binance(SIDE_BUY, quantity=quantity,
                                                 symbol=self.config['TRADE_SYMBOL'], positionSide='LONG', stopLoss=stopLoss, takeProfit=takeProfit)
                     
@@ -46,7 +47,7 @@ class TripleSupertrendStrategy(Strategy):
 
         # SHORT
         elif max(row.sRSI_d, row.sRSI_k) > self.strategy_parameters['rsi_overbought']:
-            print('short')
+            self.logger.debug('SHORT signal')
             super_trend = [row.ST_3, row.ST_2, row.ST_1]
             super_trend_val = []
             for val in super_trend:
@@ -55,6 +56,7 @@ class TripleSupertrendStrategy(Strategy):
             super_trend_val.sort()
 
             if row.Close < row.EMA and (row.sRSI_d > row.sRSI_k and len(super_trend_val) > 1):
+                self.logger.info('SHORT entry')
                 stopLoss = min(self.strategy_parameters['stop_loss_short']
                             * row.Close, super_trend_val[1])
                 stopLoss = self._round_price(stopLoss)
@@ -64,18 +66,17 @@ class TripleSupertrendStrategy(Strategy):
                 if type == "trade":
                     availableBalance = self._get_available_balance()
                     quantity = self._calculate_quantity(self.config, row, availableBalance)
-                    print(
+                    self.logger.info(
                         f'Placing order: SHORT at price: {row.Close} and quantity: {quantity}')
-                    print(f'Stop Loss: {stopLoss} \nTake Profit: {takeProfit}')
+                    self.logger.info(f'Stop Loss: {stopLoss} \nTake Profit: {takeProfit}')
                     orderIds = self._execute_trade_binance(SIDE_SELL, quantity=quantity,
                                                 symbol=self.config['TRADE_SYMBOL'], positionSide='SHORT', stopLoss=stopLoss, takeProfit=takeProfit)
 
                     self._save_trade(self.config, row, 'LONG', quantity, availableBalance)
                     return orderIds
                 elif type == "backtest":
-                    return {'side': 'SHORT', 'entry': row.Close, 'stop_loss': stopLoss, 'take_profit': takeProfit}
+                    return {'side': 'SHORT', 'entry': row.Close, 'quantity': None, 'stop_loss': stopLoss, 'take_profit': takeProfit}
             return False
 
         else:
-            print('none')
             return False

@@ -1,8 +1,13 @@
-import logging
+import os
+from datetime import datetime
+from tqdm import tqdm
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 from binance.client import Client
 from binance.enums import *
-from tqdm import tqdm
 
+from ..utils.logging_config import configure_logging
 from src.data.calculate_indicators import *
 from ..keys import BINANCE_API_KEY, BINANCE_API_SECRET
 
@@ -19,7 +24,9 @@ class Strategy:
         self.parameters = self.config[self.config['strategy_name']]
         self.indicators = Indicators()
         self.df = self.indicators.get_indicators(df, self.parameters)
-        self.trades = pd.DataFrame(columns=['date', 'symbol', 'side', 'quantity', 'entry', 'stop_loss', 'take_profit', 'result', '%pnl', 'pnl', 'balance', 'order_id', 'stop_loss_order_id', 'take_profit_order_id'])
+        self.trades = pd.DataFrame(columns=['date', 'symbol', 'side', 'quantity', 'entry', 'stop_loss', 'take_profit', 'result', 'pnl_percent', 'pnl', 'balance', 'order_id', 'stop_loss_order_id', 'take_profit_order_id'])
+        self.logger = configure_logging()
+        self.balance = None
 
         self.client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
 
@@ -64,12 +71,10 @@ class Strategy:
                 symbol=symbol, side=side_tpsl, type=FUTURE_ORDER_TYPE_STOP_MARKET, quantity=quantity, positionSide=positionSide, stopPrice=stopLoss, timeInForce=TIME_IN_FORCE_GTC)
             order_take_profit = self.client.futures_create_order(
                 symbol=symbol, side=side_tpsl, type=FUTURE_ORDER_TYPE_TAKE_PROFIT_MARKET, quantity=quantity, positionSide=positionSide, stopPrice=takeProfit, timeInForce=TIME_IN_FORCE_GTC)
-            print(order)
-            logging.info(f"Order created: {order}, stop loss order ID: {order_stop_loss['orderId']}, take profit order ID: {order_take_profit['orderId']}")
+            self.logger.info(f"Order created: {order}, stop loss order ID: {order_stop_loss['orderId']}, take profit order ID: {order_take_profit['orderId']}")
 
         except Exception as e:
-            logging.error(f"Error creating order: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error creating order: {e}")
             return False
 
         return order['orderId'], order_stop_loss['orderId'], order_take_profit['orderId']
@@ -85,9 +90,9 @@ class Strategy:
             pnl = (trade_parameters['entry'] - close_price) * balance / trade_parameters['entry']
 
         pnl_percent = (pnl / balance) * 100
-        balance += pnl
+        self.balance += pnl
 
-        return {
+        new_trade = {
             'date': date,
             'symbol':  self.config['trade_symbol'],
             'side': trade_parameters['side'],
@@ -96,7 +101,7 @@ class Strategy:
             'stop_loss': trade_parameters['stop_loss'],
             'take_profit': trade_parameters['take_profit'],
             'result': result,
-            '%pnl': pnl_percent,
+            'pnl_percent': pnl_percent,
             'pnl': pnl,
             'balance': balance,
             'order_id': None,
@@ -104,16 +109,17 @@ class Strategy:
             'take_profit_order_id': None
         }
 
-
+        new_trade_df = pd.DataFrame([new_trade], columns=self.trades.columns)
+        self.trades = pd.concat([self.trades, new_trade_df], ignore_index=True)
 
     def backtest(self, balance=1000) -> pd.DataFrame:
-        isPositionOpen = False
+        is_position_open = False
         trade_parameters = None
-        self.df.to_csv('indicators.csv')
+        self.balance = balance
 
-        print('Backtesting...')
+        self.logger.info('Backtesting...')
         for i in tqdm(range(len(self.df))):
-            if not isPositionOpen:
+            if not is_position_open:
                 if self.df.iloc[i].isnull().sum() != 0:
                     continue
 
@@ -122,55 +128,39 @@ class Strategy:
                 if trade:
                     if self.config['type'] == "spot":
                         if trade['side'] == "LONG":
-                            isPositionOpen = True
+                            is_position_open = True
                             trade_parameters = trade
 
-            elif isPositionOpen:
-                print('-----position------')
+            elif is_position_open:
                 close_price = self.df.iloc[i].Close
-                if trade_parameters['side'] == "LONG":
-                    if close_price <= trade_parameters['stop_loss']:
-                        print('long stop loss hit')
-                        self.trades = self.trades.append(
-                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'stop_loss'),
-                            ignore_index=True
-                        )
-                        isPositionOpen = False
+                if trade_parameters['side'] in ["LONG", "SHORT"]:
+                    if (trade_parameters['side'] == "LONG" and close_price >= trade_parameters['take_profit']) or \
+                        (trade_parameters['side'] == "SHORT" and close_price <= trade_parameters['take_profit']):
+                        self.logger.info(f'{trade_parameters["side"]} TakeProfit hit')
+                        self.__execute_trade_backtest(self.df.iloc[i]['Date'], trade_parameters, close_price, self.balance, 'profit')
+                        is_position_open = False
                         trade_parameters = {}
-
-                    elif close_price >= trade_parameters['take_profit']:
-                        print('long take profit hit')
-                        self.trades = self.trades.append(
-                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'take_profit'),
-                            ignore_index=True
-                        )
-                        isPositionOpen = False
-                        trade_parameters = {}
-
-                elif trade_parameters['side'] == "SHORT":
-                    if close_price >= trade_parameters['stop_loss']:
-                        print('short stop loss hit')
-                        self.trades = self.trades.append(
-                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'stop_loss'),
-                            ignore_index=True
-                        )
-                        isPositionOpen = False
-                        trade_parameters = {}
-
-                    elif close_price <= trade_parameters['take_profit']:
-                        print('short take profit hit')
-                        self.trades = self.trades.append(
-                            self.__execute_trade_backtest(self.df.iloc[i].Date, trade_parameters, close_price, balance, 'take_profit'),
-                            ignore_index=True
-                        )
-                        isPositionOpen = False
+                    
+                    elif (trade_parameters['side'] == "LONG" and close_price <= trade_parameters['stop_loss']) or \
+                    (trade_parameters['side'] == "SHORT" and close_price >= trade_parameters['stop_loss']):
+                        self.logger.info(f'{trade_parameters["side"]} StopLoss hit')
+                        self.__execute_trade_backtest(self.df.iloc[i]['Date'], trade_parameters, close_price, self.balance, 'loss')
+                        is_position_open = False
                         trade_parameters = {}
 
         return self.trades
 
     def run(self):
         trades = self.backtest()
-        trades.to_csv(f"backtest.csv", index=False)
+        current_date = datetime.now().strftime("%d%b%y")
+        file_name = f"trades/backtest/{self.config['strategy_name']}/backtest_{current_date}_{self.config['type']}_{self.config['trade_symbol']}_{self.config['timeframe']}.csv"
+        try:
+            trades.to_csv(file_name, index=False)
+        except OSError:
+            os.makedirs(os.path.dirname(file_name))
+            trades.to_csv(file_name, index=False)
+
+        self.__draw_trade_result(trades)
 
 
     def _get_available_futures_balance(self, asset: str='USDT'):
@@ -185,8 +175,7 @@ class Strategy:
             return availableBalance
 
         except Exception as e:
-            logging.error(f"Error getting available balance: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error getting available balance: {e}")
             return False
         
     def _get_available_balance(self, asset: str, type:str='free'):
@@ -200,8 +189,7 @@ class Strategy:
             return self.client.get_asset_balance(asset=asset)[type]
 
         except Exception as e:
-            logging.error(f"Error getting available balance: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error getting available balance: {e}")
             return False
         
     def _get_current_position(self, symbol: str):
@@ -211,8 +199,7 @@ class Strategy:
             return position
 
         except Exception as e:
-            logging.error(f"Error getting current position: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error getting current position: {e}")
             return False
     
     def _calculate_quantity(self, config: dict, row: pd.Series, availableBalance: float):
@@ -223,8 +210,7 @@ class Strategy:
             return quantity
 
         except Exception as e:
-            logging.error(f"Error calculating quantity: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error calculating quantity: {e}")
             return False
         
     def _save_trade(self, config, row, trade_type, quantity, balance):
@@ -234,8 +220,7 @@ class Strategy:
                 f.write(f"{row['date']}, {config['trade_symbol']}, {row['Close']}, {trade_type}, {quantity}, {balance}\n")
 
         except Exception as e:
-            logging.error(f"Error saving trade: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error saving trade: {e}")
             return False
         
     def _calculate_sl_tp(self, config, row, trade_type):
@@ -248,6 +233,33 @@ class Strategy:
             return stopLoss
 
         except Exception as e:
-            logging.error(f"Error calculating stop loss: {e}")
-            print("an exception occured - {}".format(e))
+            self.logger.error(f"Error calculating stop loss: {e}")
+            return False
+        
+
+    def __draw_trade_result(self, trades):
+        ''' Draws the trade result '''
+        try:
+            total_profits = len(trades[trades['result'] == 'profit'])
+            total_losses = len(trades[trades['result'] == 'loss'])
+            pnl_percent = trades['pnl_percent'].iloc[-1]
+            final_balance = trades['balance'].iloc[-1]
+
+            plt.figure(figsize=(10, 6))
+            plt.subplot(2, 1, 1)
+            plt.suptitle(f'{self.config["strategy_name"]} - {self.config["type"]} - {self.config["trade_symbol"]} - {self.config["timeframe"]} - {self.config["time_interval"]}')
+            plt.title(f'Profits: {total_profits} - Losses: {total_losses} \nPnL: {pnl_percent:.2f}% - Final Balance: {final_balance:.2f}')
+            plt.yscale("log")
+            plt.plot(trades['balance'])
+
+            plt.subplot(2, 1, 2)
+            plt.plot(trades['balance'])
+
+            plt.savefig(f"trades/backtest/{self.config['strategy_name']}/backtest_{self.config['type']}_{self.config['trade_symbol']}_{self.config['timeframe']}.png")
+            plt.show()
+            plt.close()
+        
+        except Exception as e:
+            self.logger.error(f"Error drawing trade result: {e}")
+            print(e)
             return False

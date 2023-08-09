@@ -1,4 +1,5 @@
 import pandas as pd
+from tqdm import tqdm
 
 from src.utils.indicators import *
 from ta.momentum import StochRSIIndicator
@@ -28,7 +29,7 @@ class Indicators:
         Returns:
             df (pd.DataFrame): Dataframe with OHLCV data and calculated indicators
         '''
-        for parameter in indicators:
+        for parameter in tqdm(indicators):
             if '-' in parameter:
                 indicator, num = parameter.split('-')
                 df = self.match_ind[indicator](df, indicators[parameter], num)
