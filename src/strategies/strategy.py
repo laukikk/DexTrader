@@ -24,7 +24,7 @@ class Strategy:
         self.parameters = self.config[self.config['strategy_name']]
         self.indicators = Indicators()
         self.df = self.indicators.get_indicators(df, self.parameters)
-        self.trades = pd.DataFrame(columns=['date', 'symbol', 'side', 'quantity', 'entry', 'stop_loss', 'take_profit', 'result', 'pnl_percent', 'pnl', 'balance', 'order_id', 'stop_loss_order_id', 'take_profit_order_id'])
+        self.trades = pd.DataFrame(columns=['date', 'symbol', 'side', 'quantity', 'leverage', 'entry', 'stop_loss', 'take_profit', 'result', 'pnl_percent', 'pnl', 'balance', 'order_id', 'stop_loss_order_id', 'take_profit_order_id'])
         self.logger = configure_logging()
         self.balance = None
 
@@ -90,20 +90,28 @@ class Strategy:
             pnl = (trade_parameters['entry'] - close_price) * balance / trade_parameters['entry']
 
         pnl_percent = (pnl / balance) * 100
-        self.balance += pnl
+        leverage = None
+
+        if self.config['type'] == "futures":
+            leverage = self.config['leverage']
+            pnl *= leverage
+            pnl_percent *= leverage
+
+        self.balance = balance + pnl
 
         new_trade = {
             'date': date,
             'symbol':  self.config['trade_symbol'],
             'side': trade_parameters['side'],
             'quantity': trade_parameters['quantity'],
+            'leverage': leverage,
             'entry': trade_parameters['entry'],
             'stop_loss': trade_parameters['stop_loss'],
             'take_profit': trade_parameters['take_profit'],
             'result': result,
             'pnl_percent': pnl_percent,
             'pnl': pnl,
-            'balance': balance,
+            'balance': self.balance,
             'order_id': None,
             'stop_loss_order_id': None,
             'take_profit_order_id': None
@@ -125,11 +133,16 @@ class Strategy:
 
                 trade = self.make_trade(type="backtest", row=self.df.iloc[i])
 
+                # only eliminates trades that are not meant to be executed
+                # considered: spot, futures
                 if trade:
                     if self.config['type'] == "spot":
-                        if trade['side'] == "LONG":
-                            is_position_open = True
-                            trade_parameters = trade
+                        if trade['side'] == "SHORT":
+                            continue
+
+                    is_position_open = True
+                    trade_parameters = trade
+
 
             elif is_position_open:
                 close_price = self.df.iloc[i].Close
@@ -153,14 +166,14 @@ class Strategy:
     def run(self):
         trades = self.backtest()
         current_date = datetime.now().strftime("%d%b%y")
-        file_name = f"trades/backtest/{self.config['strategy_name']}/backtest_{current_date}_{self.config['type']}_{self.config['trade_symbol']}_{self.config['timeframe']}.csv"
+        file_name = f"trades/backtest/{self.config['strategy_name']}/backtest_{current_date}_{self.config['type']}_{self.config['trade_symbol']}_{self.config['timeframe']}"
         try:
-            trades.to_csv(file_name, index=False)
+            trades.to_csv(file_name + ".csv", index=False)
         except OSError:
             os.makedirs(os.path.dirname(file_name))
             trades.to_csv(file_name, index=False)
 
-        self.__draw_trade_result(trades)
+        self.__draw_trade_result(trades, file_name)
 
 
     def _get_available_futures_balance(self, asset: str='USDT'):
@@ -237,7 +250,7 @@ class Strategy:
             return False
         
 
-    def __draw_trade_result(self, trades):
+    def __draw_trade_result(self, trades, file_name):
         ''' Draws the trade result '''
         try:
             total_profits = len(trades[trades['result'] == 'profit'])
@@ -255,10 +268,10 @@ class Strategy:
             plt.subplot(2, 1, 2)
             plt.plot(trades['balance'])
 
-            plt.savefig(f"trades/backtest/{self.config['strategy_name']}/backtest_{self.config['type']}_{self.config['trade_symbol']}_{self.config['timeframe']}.png")
+            plt.savefig(file_name + ".png")
             plt.show()
             plt.close()
-        
+
         except Exception as e:
             self.logger.error(f"Error drawing trade result: {e}")
             print(e)
