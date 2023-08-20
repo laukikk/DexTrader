@@ -29,6 +29,7 @@ class Indicators:
         Returns:
             df (pd.DataFrame): Dataframe with OHLCV data and calculated indicators
         '''
+        print('CALCULATING INDICATORS...')
         for parameter in tqdm(indicators):
             if '-' in parameter:
                 indicator, num = parameter.split('-')

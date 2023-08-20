@@ -3,13 +3,13 @@ from binance.enums import *
 from .strategy import Strategy
 
 class TripleSupertrendStrategy(Strategy):
-    def __init__(self, df, parameters):
-        super().__init__(df, parameters)
+    def __init__(self, parameters):
+        super().__init__(parameters)
         self.strategy_parameters = self.parameters['strategy']
         
 
     def make_trade(self, type="trade", row=None):
-        if row.empty==None: row = self.df.iloc[-1]
+        if row.empty==None: row = self.df_indicators.iloc[-1]
 
         # LONG
         if min(row.sRSI_d, row.sRSI_k) < self.strategy_parameters['rsi_oversold']:

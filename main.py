@@ -8,13 +8,7 @@ logger = configure_logging()
 
 def main(config):
     logger.info('Starting Trading Bot')
-    print('GETTING HISTORIC DATA...')
-    df = data.get_historic_data(symbol=config['trade_symbol'], 
-                                interval=config['time_interval'], 
-                                days=config['timeframe'])
-    print('CALCULATING INDICATORS...')
-    strategy = TripleSupertrendStrategy(df, config)
-    print('INITIALIZING BACKTEST...')
+    strategy = TripleSupertrendStrategy(config)
     strategy.run()
 
 
@@ -23,4 +17,5 @@ if __name__ == '__main__':
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
+    print('STARTING BOT...')
     main(config)

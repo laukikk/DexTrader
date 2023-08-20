@@ -12,6 +12,7 @@ def get_historical_klines(symbol, interval, start_date):
 
 
 def get_historic_data(symbol, interval, days=2):
+    print('GETTING HISTORIC DATA...')
     end_date = datetime.datetime.now()
     start_date = end_date - datetime.timedelta(days=days)
     start_date_str = start_date.strftime("%d %b, %Y")
@@ -24,7 +25,7 @@ def get_historic_data(symbol, interval, days=2):
         if col != 'Date':
             df[col] = df[col].astype(float)
 
-    file_path = os.path.join(r'data\binance\historic', f"{symbol}_{end_date.strftime('%d%b%Y')}_{interval}.csv")
+    file_path = os.path.join('data/ohlc/historic/binance', f"{symbol}_{end_date.strftime('%d%b%Y')}_{interval}.csv")
     df.to_csv(file_path, index=False)
     return df
 
